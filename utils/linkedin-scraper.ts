@@ -215,27 +215,36 @@ function scrapeCurrentCompanyFromExperience(): { name: string; linkedinUrl?: str
   const experience = Array.from(document.querySelectorAll('main section')).find((section) =>
     /^experience\b/i.test(cleanText(section.querySelector('h2')))
   );
+  // The Experience section is lazy-loaded and may not exist until the user scrolls
   const entryLink = experience
     ? Array.from(experience.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]')).find((a) => cleanText(a))
     : undefined;
-  if (!entryLink) return null;
 
-  const idMatch = (entryLink.getAttribute('href') || '').match(/\/company\/([^/?#]+)/);
+  const idMatch = (entryLink?.getAttribute('href') || '').match(/\/company\/([^/?#]+)/);
   const linkedinUrl = idMatch ? `https://www.linkedin.com/company/${idMatch[1]}/` : undefined;
   // Text pieces of the entry: [title, company, dates, location] for one role,
   // [company, ...] when several roles are grouped under one company
-  const pieces = Array.from(entryLink.querySelectorAll('*'))
-    .filter((el) => el.childElementCount === 0)
-    .map(cleanText)
-    .filter((text) => text && text !== '·');
-
-  const card = findPersonTopCard();
-  const ignore = /^(more|message|connect|follow|following|pending|contact info|add to twenty|open in twenty)$/i;
-  const cardButtons = card
-    ? Array.from(card.querySelectorAll('button, [role="button"]')).map(cleanText).filter((t) => t && !ignore.test(t))
+  const pieces = entryLink
+    ? Array.from(entryLink.querySelectorAll('*'))
+        .filter((el) => el.childElementCount === 0)
+        .map(cleanText)
+        .filter((text) => text && text !== '·')
     : [];
+
+  // Top-card buttons other than LinkedIn's actions and ours: current company first,
+  // then (if shown) school
+  const card = findPersonTopCard();
+  const ignore = /^(more|message|connect|follow|following|pending|contact info|add to twenty|open in twenty|saving.*|\+?\s*\d+ more)$/i;
+  const cardButtons = card
+    ? Array.from(card.querySelectorAll('button, [role="button"]'))
+        .filter((b) => !b.closest('#twenty-capture-root'))
+        .map(cleanText)
+        .filter((t) => t && !ignore.test(t) && !/mutual connection/i.test(t))
+    : [];
+
   const matched = cardButtons.find((text) => pieces.includes(text));
   if (matched) return { name: matched, linkedinUrl };
+  if (cardButtons[0]) return { name: cardButtons[0], linkedinUrl: pieces.includes(cardButtons[0]) ? linkedinUrl : undefined };
 
   const name = pieces.length > 1 && /\d{4}/.test(pieces[2] || '') ? pieces[1] : pieces[0];
   return name ? { name, linkedinUrl } : null;
