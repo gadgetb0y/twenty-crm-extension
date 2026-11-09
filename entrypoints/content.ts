@@ -298,8 +298,9 @@ export default defineContentScript({
 
         const label = button.getAttribute('aria-label')?.trim() || '';
         const text = button.textContent?.trim() || '';
-        // Profiles show a "More" text button; company pages an icon labelled "More actions for <Company>"
-        const isMore = /^more actions\b/i.test(label) || /^more$/i.test(text);
+        // Profiles show a "More" text button or (since late 2026) an icon labelled "More";
+        // company pages an icon labelled "More actions for <Company>"
+        const isMore = /^more(\s+actions\b|$)/i.test(label) || /^more$/i.test(text);
 
         // Skip hidden copies, such as the sticky header's actions before it slides in
         if (isMore && button.getClientRects().length > 0) {
