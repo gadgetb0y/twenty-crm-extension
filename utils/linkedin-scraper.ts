@@ -81,7 +81,11 @@ function scrapePersonTopCard(): {
       .pop() || '';
   }
 
-  const company = card.querySelector('strong')?.textContent?.trim() || '';
+  // Skip bold names in the "X is a mutual connection" line, which link to a people search
+  const company =
+    Array.from(card.querySelectorAll('strong'))
+      .find((s) => !s.closest('a[href*="/search/"]') && !/mutual connection/i.test(s.closest('p')?.textContent || ''))
+      ?.textContent?.trim() || '';
 
   const image = Array.from(card.querySelectorAll('img')).find((img) =>
     img.src.includes('profile-displayphoto')
@@ -198,9 +202,51 @@ function scrapeProfileImage(): string {
   return '';
 }
 
+const cleanText = (el: Element | null | undefined) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+
+// Late-2026 profile layout: the top card shows the current company as an unlabelled
+// button, and the Experience section's first entry links to the company page.
+// Use the top-card button whose text appears in the first Experience entry;
+// otherwise fall back to that entry's company.
+function scrapeCurrentCompanyFromExperience(): { name: string; linkedinUrl?: string } | null {
+  const experience = Array.from(document.querySelectorAll('main section')).find((section) =>
+    /^experience\b/i.test(cleanText(section.querySelector('h2')))
+  );
+  const entryLink = experience
+    ? Array.from(experience.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]')).find((a) => cleanText(a))
+    : undefined;
+  if (!entryLink) return null;
+
+  const idMatch = (entryLink.getAttribute('href') || '').match(/\/company\/([^/?#]+)/);
+  const linkedinUrl = idMatch ? `https://www.linkedin.com/company/${idMatch[1]}/` : undefined;
+  // Text pieces of the entry: [title, company, dates, location] for one role,
+  // [company, ...] when several roles are grouped under one company
+  const pieces = Array.from(entryLink.querySelectorAll('*'))
+    .filter((el) => el.childElementCount === 0)
+    .map(cleanText)
+    .filter((text) => text && text !== '·');
+
+  const card = findPersonTopCard();
+  const ignore = /^(more|message|connect|follow|following|pending|contact info|add to twenty|open in twenty)$/i;
+  const cardButtons = card
+    ? Array.from(card.querySelectorAll('button, [role="button"]')).map(cleanText).filter((t) => t && !ignore.test(t))
+    : [];
+  const matched = cardButtons.find((text) => pieces.includes(text));
+  if (matched) return { name: matched, linkedinUrl };
+
+  const name = pieces.length > 1 && /\d{4}/.test(pieces[2] || '') ? pieces[1] : pieces[0];
+  return name ? { name, linkedinUrl } : null;
+}
+
 // Scrape company info from current profile page
 function scrapeCurrentCompanyFromProfile(): { name: string; linkedinUrl?: string; logoUrl?: string } | null {
   try {
+    const fromExperience = scrapeCurrentCompanyFromExperience();
+    if (fromExperience) {
+      console.log('Found company from Experience section:', fromExperience);
+      return fromExperience;
+    }
+
     // Best method: Find button with aria-label containing "Entreprise actuelle" or "Current company"
     // This button contains company name, logo, and links to company page
     const companyButton = 
