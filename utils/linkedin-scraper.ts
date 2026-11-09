@@ -63,7 +63,10 @@ function scrapePersonTopCard(): {
 
   const followsName = (el: Element) =>
     !!(nameElement.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-  const paragraphs = Array.from(card.querySelectorAll('p')).filter(followsName);
+  // Skip connection-degree badges such as "· 1st", "2nd" or "3rd+" shown after the name
+  const isDegree = (el: Element) =>
+    /^[·\s]*(1st|2nd|3rd\+?|\d+(st|nd|rd|th)\+?)?$/i.test((el.textContent || '').trim());
+  const paragraphs = Array.from(card.querySelectorAll('p')).filter((p) => followsName(p) && !isDegree(p));
   const headline = paragraphs.map((p) => p.textContent?.trim() || '').find(Boolean) || '';
 
   let location = '';
